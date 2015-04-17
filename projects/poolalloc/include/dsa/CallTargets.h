@@ -69,6 +69,22 @@ namespace dsa{
     }
   };
   
+  //
+  // Pass: CallTargetMarker
+  //
+  // Description:
+  //  This pass will add metadata to call sites listing the set of functions
+  //  that can be called from that call site.  It is designed to be a way
+  //  of taking DSA callgraph results (created using LLVM 3.2) and using them
+  //  in newer versions of DSA (currently LLVM 3.5).
+  //
+  class CallTargetMarker : public ModulePass {
+  public:
+    static char ID;
+    CallTargetMarker() : ModulePass(ID) {}
+    virtual bool runOnModule(Module &M);
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const;
+  };
 }
 
 #endif

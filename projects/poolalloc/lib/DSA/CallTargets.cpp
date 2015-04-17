@@ -33,6 +33,7 @@ using namespace llvm;
 
 RegisterPass<dsa::CallTargetFinder<EQTDDataStructures> > X("calltarget-eqtd","Find Call Targets (uses DSA-EQTD)");
 RegisterPass<dsa::CallTargetFinder<TDDataStructures> > Y("calltarget-td","Find Call Targets (uses DSA-TD)");
+RegisterPass<dsa::CallTargetMarker> Z("callmarker","Add Call Target Metata (uses DSA-TD)");
 namespace {
   STATISTIC (DirCall, "Number of direct calls");
   STATISTIC (IndCall, "Number of indirect calls");
@@ -169,5 +170,100 @@ bool CallTargetFinder<dsa>::runOnModule(Module &M) {
 void CallTargetFinder<dsa>::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
   AU.addRequired<dsa>();
+}
+
+//
+// Method: runOnModule()
+//
+// Description:
+//  Start running the CallTargetMarker transform on the specified module.
+//  This pass will add metadata to indirect calls listing the targets
+//  (i.e., functions) that they can call.
+//
+// Inputs:
+//  M - The LLVM module to transform.
+//
+// Return value:
+//  true  - The module was modified.
+//  false - The module was not modified.
+//
+bool
+CallTargetMarker::runOnModule(Module &M) {
+  //
+  // Get a pointer to the CallTargetFinder analysis.  This pass will tell us
+  // where all the call sites are, whether we know everything about them, and
+  // what functions can be called by those call sites.
+  //
+  dsa::CallTargetFinder<TDDataStructures> & CTF =
+      getAnalysis<CallTargetFinder<TDDataStructures> >();
+
+  //
+  // For each call site that we know about, determine if it is complete, and,
+  // if so, add metadata to it.
+  //
+  std::list<CallSite>::iterator csi = CTF.cs_begin();
+  std::list<CallSite>::iterator cse = CTF.cs_end();
+  for (; csi != cse; ++csi) {
+    // Get the call site
+    CallSite & CS = *csi;
+
+    //
+    // If we do not know all of the callees of the call site, skip it.
+    //
+    if (!(CTF.isComplete (CS))) {
+      continue;
+    }
+
+    //
+    // If the call is a direct call, don't bother adding metadata.
+    //
+    Function* CF = CS.getCalledFunction();
+    if (CF) {
+      continue;
+    }
+
+    if (dyn_cast<Function>(CS.getCalledValue()->stripPointerCasts())) {
+      continue;
+    }
+
+    if (isa<ConstantPointerNull>(CS.getCalledValue()->stripPointerCasts())) {
+      continue;
+    }
+
+    //
+    // Create a metadata node with metadata for each call target.
+    //
+    std::vector<Value *> TargetStrings;
+    std::vector<const Function*>::iterator fi = CTF.begin(CS);
+    std::vector<const Function*>::iterator fe = CTF.end(CS);
+    for (; fi != fe; ++fi) {
+      //
+      // Get the target function
+      //
+      const Function * F = *fi;
+
+      //
+      // Create a metadata string and add it to the list of target strings.
+      //
+      TargetStrings.push_back ((Function *)(F));
+    }
+
+#if 0
+    //
+    // Create a metadata node for all the call targets and attach it to the
+    // call site's instruction.
+    //
+    MDNode * Targets = MDNode::get (M.getContext(), TargetStrings);
+    CS.getInstruction()->setMetadata ("CT", Targets);
+#endif
+  }
+
+  return true;
+}
+
+void
+CallTargetMarker::getAnalysisUsage(AnalysisUsage &AU) const {
+    AU.addRequired< CallTargetFinder<TDDataStructures> >();
+      return;
 }
 }
